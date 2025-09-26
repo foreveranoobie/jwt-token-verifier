@@ -1,0 +1,1 @@
+mvn install:install-file -Dfile=<path to jar> -DgroupId=com.storozhuk.decoder -DartifactId=jwt-decoder -Dversion=1.0-SNAPSHOT -Dpackaging=jar -DgeneratePom=true
