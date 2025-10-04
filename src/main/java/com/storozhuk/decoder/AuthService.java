@@ -15,6 +15,7 @@ import java.net.http.HttpResponse;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.RSAPublicKeySpec;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 
@@ -31,7 +32,7 @@ public class AuthService {
 
     private RSAPublicKey getPublicKey(String keyId) throws Exception {
         // Fetch JWKS from Auth0
-        String jwksUrl = "https://" + domain + "/.well-known/jwks.json";
+        String jwksUrl = domain + "/.well-known/jwks.json";
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(jwksUrl))
             .GET()
@@ -86,18 +87,46 @@ public class AuthService {
             // Verify the token
             Algorithm algorithm = Algorithm.RSA256(publicKey, null);
             DecodedJWT jwt = JWT.require(algorithm)
-                .withIssuer("https://" + domain + "/")
+                .withIssuer(domain + "/")
                 .build()
                 .verify(token);
 
             // Extract roles (adjust claim name based on your Auth0 configuration)
             List<String> roles = jwt.getClaim("roles").asList(String.class);
-            List<String> permissions = jwt.getClaim("permissions").asList(String.class);
 
-            return new UserInfo(jwt.getSubject(), roles, permissions);
+            return new UserInfo(jwt.getSubject(), roles);
 
         } catch (Exception e) {
             throw new RuntimeException("Invalid token: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * Validates if an access token is not expired. This method only checks the expiration claim
+     * without performing signature verification.
+     *
+     * @param token the JWT token to check
+     * @return true if the token is not expired, false otherwise
+     * @throws RuntimeException if the token is malformed or doesn't contain an expiration claim
+     */
+    public boolean isTokenNotExpired(String token) {
+        try {
+            // Decode the token without verification to check expiration
+            DecodedJWT jwt = JWT.decode(token);
+
+            // Get the expiration time from the 'exp' claim
+            Instant expirationTime = jwt.getExpiresAtAsInstant();
+
+            if (expirationTime == null) {
+                throw new RuntimeException("Token does not contain expiration claim");
+            }
+
+            // Check if the current time is before expiration time
+            return Instant.now().isBefore(expirationTime);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid token format: " + e.getMessage(), e);
+        }
+    }
+
 }
