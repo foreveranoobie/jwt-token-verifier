@@ -6,7 +6,6 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
 import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -33,10 +32,7 @@ public class AuthService {
     private RSAPublicKey getPublicKey(String keyId) throws Exception {
         // Fetch JWKS from Auth0
         String jwksUrl = domain + "/.well-known/jwks.json";
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(jwksUrl))
-            .GET()
-            .build();
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(jwksUrl)).GET().build();
 
         HttpResponse<String> response = httpClient.send(request,
             HttpResponse.BodyHandlers.ofString());
@@ -86,15 +82,15 @@ public class AuthService {
 
             // Verify the token
             Algorithm algorithm = Algorithm.RSA256(publicKey, null);
-            DecodedJWT jwt = JWT.require(algorithm)
-                .withIssuer(domain + "/")
-                .build()
-                .verify(token);
+            DecodedJWT jwt = JWT.require(algorithm).withIssuer(domain + "/").build().verify(token);
 
             // Extract roles (adjust claim name based on your Auth0 configuration)
-            List<String> roles = jwt.getClaim("roles").asList(String.class);
+            List<String> roles = jwt.getClaim("info/roles").asList(String.class);
+            List<String> permissions = jwt.getClaim("permissions").asList(String.class);
+            Instant issuedAt = jwt.getIssuedAt().toInstant();
+            Instant expirationTime = jwt.getExpiresAt().toInstant();
 
-            return new UserInfo(jwt.getSubject(), roles);
+            return new UserInfo(jwt.getSubject(), roles, permissions, issuedAt, expirationTime);
 
         } catch (Exception e) {
             throw new RuntimeException("Invalid token: " + e.getMessage(), e);

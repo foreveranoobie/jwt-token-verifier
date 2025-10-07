@@ -5,15 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.PublicKey;
-import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -60,42 +59,32 @@ public class AuthServiceUnitTest {
     private void setupJWKSMock() throws Exception {
         // Create JWKS response with our test public key
         RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
-        String modulus = Base64.getUrlEncoder()
-            .withoutPadding()
+        String modulus = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(publicKey.getModulus().toByteArray());
-        String exponent = Base64.getUrlEncoder()
-            .withoutPadding()
+        String exponent = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(publicKey.getPublicExponent().toByteArray());
 
-        Map<String, Object> jwksResponse = Map.of(
-            "keys", List.of(
-                Map.of(
-                    "kty", "RSA",
-                    "use", "sig",
-                    "kid", KEY_ID,
-                    "n", modulus,
-                    "e", exponent,
-                    "alg", "RS256",
-                    "iss", DOMAIN + "/"
-                )
-            )
-        );
+        Map<String, Object> jwksResponse = Map.of("keys", List.of(
+            Map.of("kty", "RSA", "use", "sig", "kid", KEY_ID, "n", modulus, "e", exponent, "alg",
+                "RS256", "iss", DOMAIN + "/")));
 
         String jwksJson = objectMapper.writeValueAsString(jwksResponse);
 
-        stubFor(get(urlEqualTo("/.well-known/jwks.json"))
-            .willReturn(aResponse()
-                .withStatus(200)
-                .withHeader("Content-Type", "application/json")
+        stubFor(get(urlEqualTo("/.well-known/jwks.json")).willReturn(
+            aResponse().withStatus(200).withHeader("Content-Type", "application/json")
                 .withBody(jwksJson)));
     }
 
     @Test
     public void shouldReturnUserInfo_whenValidateToken_givenValidToken() {
         //given
-        UserInfo expectedUser = new UserInfo("test-subject", List.of("test-role"));
-        String givenToken = tokenGenerator.generateToken(10, "test-subject", List.of("test-role"),
-            List.of("test-permission"));
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        Instant expiration = now.plus(10, ChronoUnit.SECONDS);
+
+        UserInfo expectedUser = new UserInfo("test-subject", List.of("test-role"),
+            List.of("test-permission"), now, expiration);
+        String givenToken = tokenGenerator.generateToken("test-subject", List.of("test-role"),
+            List.of("test-permission"), now, 10);
 
         //when
         UserInfo actualUser = authService.validateToken(givenToken);
@@ -108,7 +97,8 @@ public class AuthServiceUnitTest {
     @Test
     public void shouldReturnTrue_whenIsTokenNotExpired_givenNotExpiredToken() {
         //given
-        String givenToken = tokenGenerator.generateToken(10, null, null, null);
+        Instant now = Instant.now();
+        String givenToken = tokenGenerator.generateToken(null, null, null, now, 10);
 
         //when
         boolean actualResult = authService.isTokenNotExpired(givenToken);
@@ -120,7 +110,8 @@ public class AuthServiceUnitTest {
     @Test
     public void shouldReturnFalse_whenIsTokenNotExpired_givenExpiredToken() {
         //given
-        String givenToken = tokenGenerator.generateToken(0, null, null, null);
+        Instant now = Instant.now();
+        String givenToken = tokenGenerator.generateToken(null, null, null, now, 0);
 
         //when
         boolean actualResult = authService.isTokenNotExpired(givenToken);
